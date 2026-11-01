@@ -27,6 +27,8 @@ services:
   trabajador:
     build: ./api
     command: ["node", "dist/trabajador.js"]
+    # La imagen trae el chequeo de salud de la API (puerto 3000); el trabajador no sirve HTTP
+    healthcheck: { disable: true }
     env_file: .env
     environment:
       DATABASE_URL: postgresql://relevo:relevo@db:5432/relevo
