@@ -1,0 +1,32 @@
+{
+  "name": "relevo-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Relevo: recibe webhooks, verifica firmas y los reenvía con reintentos",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/servidor.ts",
+    "trabajador": "tsx src/trabajador.ts",
+    "migrar": "tsx src/db/migrar.ts",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/db/migraciones','dist/db/migraciones',{recursive:true})\"",
+    "start": "node dist/servidor.js",
+    "start:trabajador": "node dist/trabajador.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.1",
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
