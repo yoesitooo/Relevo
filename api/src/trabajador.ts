@@ -9,6 +9,7 @@
  * mitad de una entrega, el arriendo vence y otro lo reintenta (entrega
  * "al menos una vez": el destino deduplica con webhook-id, que es el ID del envío).
  */
+import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Config } from "./config.js";
 import { leerConfig } from "./config.js";
@@ -132,9 +133,13 @@ export async function procesarLote(db: Db, config: Config, limite = 10, tiempoMa
   return envios.length;
 }
 
+/** Archivo de "latido": el chequeo de salud de Docker verifica que se actualice. */
+export const ARCHIVO_LATIDO = process.env.ARCHIVO_LATIDO ?? "/tmp/relevo-latido";
+
 export async function iniciarTrabajador(db: Db, config: Config, señal: AbortSignal, pausaMs = 1000): Promise<void> {
   console.log(`Trabajador activo (hasta ${MAX_INTENTOS} intentos por envío).`);
   while (!señal.aborted) {
+    await writeFile(ARCHIVO_LATIDO, String(Date.now())).catch(() => {});
     try {
       const n = await procesarLote(db, config);
       if (n === 0) await new Promise((r) => setTimeout(r, pausaMs));

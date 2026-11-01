@@ -27,8 +27,11 @@ services:
   trabajador:
     build: ./api
     command: ["node", "dist/trabajador.js"]
-    # La imagen trae el chequeo de salud de la API (puerto 3000); el trabajador no sirve HTTP
-    healthcheck: { disable: true }
+    # El trabajador no sirve HTTP: está sano si su "latido" se actualizó hace menos de 30 s
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(Date.now() - Number(require('fs').readFileSync('/tmp/relevo-latido', 'utf8')) < 30000 ? 0 : 1)"]
+      interval: 10s
+      retries: 3
     env_file: .env
     environment:
       DATABASE_URL: postgresql://relevo:relevo@db:5432/relevo
