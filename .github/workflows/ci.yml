@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  ADMIN_API_KEY: clave-de-ci-para-pruebas-123
+  CLAVE_CIFRADO: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  PERMITIR_HTTP: "true"
+  DATABASE_URL: postgresql://relevo:relevo@localhost:5432/relevo_test
+
+jobs:
+  api:
+    name: API (tipos, pruebas con PostgreSQL, build)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: relevo, POSTGRES_PASSWORD: relevo, POSTGRES_DB: relevo_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U relevo" --health-interval 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 26, cache: npm, cache-dependency-path: api/package-lock.json }
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  panel:
+    name: Panel (build, prueba e2e en navegador y colección de Postman)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: relevo, POSTGRES_PASSWORD: relevo, POSTGRES_DB: relevo_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U relevo" --health-interval 5s --health-retries 10
+    env:
+      PORT: "3000"
+      ORIGENES_PANEL: "*"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 26 }
+      - name: Levantar la API
+        working-directory: api
+        run: |
+          npm ci --ignore-scripts && npm run build
+          node dist/servidor.js > ../api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:3000/salud && break; sleep 1; done
+      - name: Compilar el panel
+        working-directory: panel
+        run: npm ci && npx ng build
+      - name: Prueba de punta a punta (Playwright)
+        working-directory: panel
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          RELEVO_API=http://localhost:3000 node e2e/flujo.cjs
+      - name: Colección de Postman (Newman)
+        run: npx --yes newman run postman/relevo.postman_collection.json --env-var base_url=http://localhost:3000 --env-var admin_key=$ADMIN_API_KEY
+      - if: failure()
+        run: cat api.log
+
+  docker:
+    name: Docker Compose (sistema completo + demo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - run: cp .env.example .env
+      - run: docker compose up -d --build --wait
+      - name: Enviar un webhook de demo y comprobar que llega al receptor
+        run: |
+          docker compose exec -T api node dist/demo.js
+          for i in $(seq 1 20); do docker compose logs receptor-demo | grep -q "Recibido" && break; sleep 1; done
+          docker compose logs receptor-demo | grep "Recibido"
+      - if: failure()
+        run: docker compose logs

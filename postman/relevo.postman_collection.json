@@ -1,0 +1,513 @@
+{
+  "info": {
+    "_postman_id": "6145abbf-0b61-41f3-ae62-9294d6bb4518",
+    "name": "Relevo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Recorrido completo de Relevo: crear una fuente y un destino, enviar un webhook firmado (Standard Webhooks), comprobar deduplicación y rechazo de firmas, y revisar/reenviar desde la API de administración. Ejecuta la colección en orden (Run collection)."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "admin_key",
+      "value": "cambia-esta-clave-de-desarrollo-123"
+    },
+    {
+      "key": "destino_url",
+      "value": "http://receptor-demo:8080/webhook"
+    },
+    {
+      "key": "fuente_slug",
+      "value": ""
+    },
+    {
+      "key": "fuente_id",
+      "value": ""
+    },
+    {
+      "key": "fuente_secreto",
+      "value": ""
+    },
+    {
+      "key": "webhook_id",
+      "value": ""
+    },
+    {
+      "key": "evento_id",
+      "value": ""
+    },
+    {
+      "key": "envio_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Salud",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/salud",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "salud"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"API arriba\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Crear fuente (Standard Webhooks)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/fuentes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "fuentes"
+          ]
+        },
+        "description": "El secreto solo se muestra aquí: configúralo en el proveedor.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slug\": \"{{fuente_slug}}\",\n  \"nombre\": \"Pasarela de pagos\",\n  \"tipo_firma\": \"standard\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set(\"fuente_slug\", \"pagos-\" + Date.now().toString(36));",
+              "pm.collectionVariables.set(\"webhook_id\", \"\");"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"201 con URL y secreto\", () => {",
+              "  pm.response.to.have.status(201);",
+              "  const r = pm.response.json();",
+              "  pm.expect(r.secreto).to.match(/^whsec_/);",
+              "  pm.collectionVariables.set(\"fuente_id\", r.id);",
+              "  pm.collectionVariables.set(\"fuente_secreto\", r.secreto);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Crear destino",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/fuentes/{{fuente_id}}/destinos",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "fuentes",
+            "{{fuente_id}}",
+            "destinos"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"{{destino_url}}\",\n  \"filtro_tipos\": [\"pago.aprobado\"]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"201 con secreto del destino\", () => { pm.response.to.have.status(201); pm.expect(pm.response.json().secreto).to.match(/^whsec_/); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Enviar webhook firmado",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/in/{{fuente_slug}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "in",
+            "{{fuente_slug}}"
+          ]
+        },
+        "description": "El script previo firma la petición como lo haría el proveedor.",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"type\":\"pago.aprobado\",\"data\":{\"referencia\":\"PED-1001\",\"monto\":89900,\"moneda\":\"COP\"}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Firma Standard Webhooks: HMAC-SHA256 de \"{id}.{timestamp}.{cuerpo}\" con el secreto (sin \"whsec_\", en base64)",
+              "const id = pm.collectionVariables.get(\"webhook_id\") || (\"msg_\" + Date.now());",
+              "pm.collectionVariables.set(\"webhook_id\", id);",
+              "const ts = Math.floor(Date.now() / 1000).toString();",
+              "const cuerpo = pm.request.body.raw;",
+              "const clave = CryptoJS.enc.Base64.parse(pm.collectionVariables.get(\"fuente_secreto\").replace(\"whsec_\", \"\"));",
+              "const firma = CryptoJS.HmacSHA256(id + \".\" + ts + \".\" + cuerpo, clave).toString(CryptoJS.enc.Base64);",
+              "pm.request.headers.upsert({ key: \"webhook-id\", value: id });",
+              "pm.request.headers.upsert({ key: \"webhook-timestamp\", value: ts });",
+              "pm.request.headers.upsert({ key: \"webhook-signature\", value: \"v1,\" + firma });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"202 aceptado\", () => { pm.response.to.have.status(202); pm.collectionVariables.set(\"evento_id\", pm.response.json().evento_id); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Repetir el mismo webhook (deduplicación)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/in/{{fuente_slug}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "in",
+            "{{fuente_slug}}"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"type\":\"pago.aprobado\",\"data\":{\"referencia\":\"PED-1001\",\"monto\":89900,\"moneda\":\"COP\"}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Firma Standard Webhooks: HMAC-SHA256 de \"{id}.{timestamp}.{cuerpo}\" con el secreto (sin \"whsec_\", en base64)",
+              "const id = pm.collectionVariables.get(\"webhook_id\") || (\"msg_\" + Date.now());",
+              "pm.collectionVariables.set(\"webhook_id\", id);",
+              "const ts = Math.floor(Date.now() / 1000).toString();",
+              "const cuerpo = pm.request.body.raw;",
+              "const clave = CryptoJS.enc.Base64.parse(pm.collectionVariables.get(\"fuente_secreto\").replace(\"whsec_\", \"\"));",
+              "const firma = CryptoJS.HmacSHA256(id + \".\" + ts + \".\" + cuerpo, clave).toString(CryptoJS.enc.Base64);",
+              "pm.request.headers.upsert({ key: \"webhook-id\", value: id });",
+              "pm.request.headers.upsert({ key: \"webhook-timestamp\", value: ts });",
+              "pm.request.headers.upsert({ key: \"webhook-signature\", value: \"v1,\" + firma });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 duplicado: no se procesa dos veces\", () => { pm.response.to.have.status(200); pm.expect(pm.response.json().duplicado).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Firma inválida",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "webhook-id",
+            "value": "msg_falso"
+          },
+          {
+            "key": "webhook-timestamp",
+            "value": "{{$timestamp}}"
+          },
+          {
+            "key": "webhook-signature",
+            "value": "v1,ZmlybWFmYWxzYQ=="
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/in/{{fuente_slug}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "in",
+            "{{fuente_slug}}"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"type\":\"pago.aprobado\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"401 firma_invalida\", () => { pm.response.to.have.status(401); pm.expect(pm.response.json().error).to.eql(\"firma_invalida\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Listar eventos de la fuente",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/eventos?fuente={{fuente_slug}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "eventos"
+          ],
+          "query": [
+            {
+              "key": "fuente",
+              "value": "{{fuente_slug}}"
+            }
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"un evento\", () => { pm.response.to.have.status(200); pm.expect(pm.response.json().items.length).to.eql(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Detalle del evento",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/eventos/{{evento_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "eventos",
+            "{{evento_id}}"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"trae el cuerpo y un envío\", () => {",
+              "  pm.response.to.have.status(200);",
+              "  const r = pm.response.json();",
+              "  pm.expect(r.evento.cuerpo.data.referencia).to.eql(\"PED-1001\");",
+              "  pm.expect(r.envios.length).to.eql(1);",
+              "  pm.collectionVariables.set(\"envio_id\", r.envios[0].id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Reenviar a mano",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/envios/{{envio_id}}/reenviar",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "envios",
+            "{{envio_id}}",
+            "reenviar"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"202 con el resultado del intento\", () => { pm.response.to.have.status(202); pm.expect(pm.response.json().intento).to.have.property(\"numero\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Sin clave de administración",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/fuentes",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "fuentes"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

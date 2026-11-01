@@ -27,7 +27,7 @@ Verificación Standard Webhooks (varias firmas, tolerancia de 300 s) y GitHub; f
 
 ## T-3 — Política de reintentos
 
-Esperas 30 s, 2 min, 10 min, 1 h, 6 h con aleatoriedad de ±20 %; `null` después del quinto intento.
+Esperas 30 s, 2 min, 10 min, 1 h, 6 h con aleatoriedad de ±20 %: 6 intentos en total; `null` después del sexto.
 
 - **Cubre:** CA-3.3
 - **Archivos:** `api/src/reintentos.ts`, `api/test/reintentos.test.ts`
@@ -52,7 +52,7 @@ Bucle que toma envíos vencidos con `FOR UPDATE SKIP LOCKED`, firma, envía con 
 - **Archivos:** `api/src/trabajador.ts`, `api/test/trabajador.test.ts`
 - **Lee:** `api/src/firmas.ts`, `api/src/reintentos.ts`
 - **Depende de:** T-2, T-3
-- **Lista cuando:** con un destino de prueba local: entrega exitosa, reintento tras 500, fallo final tras 5 intentos, y dos trabajadores en paralelo nunca entregan el mismo envío dos veces.
+- **Lista cuando:** con un destino de prueba local: entrega exitosa, reintento tras 500, fallo final tras 6 intentos, y dos trabajadores en paralelo nunca entregan el mismo envío dos veces.
 
 ## T-6 — API de administración
 

@@ -1,0 +1,51 @@
+# Relevo completo en local:  cp .env.example .env  &&  docker compose up --build
+# Panel: http://localhost:4200 · API: http://localhost:3000
+# Demo (crea una fuente y envía un webhook firmado):  docker compose exec api node dist/demo.js
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: relevo
+      POSTGRES_PASSWORD: relevo
+      POSTGRES_DB: relevo
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relevo"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://relevo:relevo@db:5432/relevo
+    ports: ["3000:3000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  trabajador:
+    build: ./api
+    command: ["node", "dist/trabajador.js"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://relevo:relevo@db:5432/relevo
+    depends_on:
+      db: { condition: service_healthy }
+
+  panel:
+    build: ./panel
+    environment:
+      RELEVO_API: http://localhost:3000
+    ports: ["4200:80"]
+    depends_on: [api]
+
+  # Un sistema interno de ejemplo que recibe lo que Relevo reenvía
+  receptor-demo:
+    image: node:26-alpine
+    command: >
+      node -e "require('http').createServer((q,s)=>{let b='';q.on('data',c=>b+=c);
+      q.on('end',()=>{console.log('Recibido', q.headers['webhook-id'], b);s.end('ok')})}).listen(8080)"
+
+volumes:
+  db:
