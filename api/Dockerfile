@@ -14,5 +14,6 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 USER node
 EXPOSE 3000
-HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://localhost:3000/salud || exit 1
+# 127.0.0.1 y no localhost: en Alpine localhost resuelve primero a IPv6 (::1)
+HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/salud || exit 1
 CMD ["node", "dist/servidor.js"]

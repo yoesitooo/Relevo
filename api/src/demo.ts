@@ -6,7 +6,7 @@ import { leerConfig } from "./config.js";
 import { firmarStandard } from "./firmas.js";
 
 const config = leerConfig();
-const base = `http://localhost:${config.puerto}`;
+const base = `http://127.0.0.1:${config.puerto}`; // IPv4: en Alpine "localhost" es ::1 primero
 const destino = process.env.DESTINO_DEMO ?? "http://receptor-demo:8080/webhook";
 const auth = { authorization: `Bearer ${config.adminApiKey}`, "content-type": "application/json" };
 
